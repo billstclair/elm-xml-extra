@@ -1,7 +1,7 @@
 ----------------------------------------------------------------------
 --
 -- example.elm
--- Example of using billstclair/elm-simple-xml-to-json
+-- Example of using billstclair/elm-xml-extra
 -- Copyright (c) 2017 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
@@ -11,10 +11,10 @@
 
 module Main exposing (..)
 
-import Xml.SimpleXmlToJson exposing ( TagSpec, Required(..)
-                                    , xmlToJson, decodeXml
-                                    , tagDecoder, optionalTag
-                                    )
+import Xml.Extra exposing ( TagSpec, Required(..)
+                          , xmlToJson, decodeXml
+                          , tagDecoder, optionalTag
+                          )
 
 import Xml
 import Xml.Decode as XD
@@ -197,7 +197,7 @@ view model =
             , b [ text "Decoded:" ]
             , pre []
                 [ text decodedString ]
-            , b [ text "Xml.SimpleXmlToJson.xmlToJson:" ]
+            , b [ text "Xml.Extra.xmlToJson:" ]
             , pre []
                 [ text simpleVal ]
             , b [ text "Xml.xmlToJson:" ]

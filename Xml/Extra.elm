@@ -1,7 +1,7 @@
 ----------------------------------------------------------------------
 --
--- SimpleXmlToJson.elm
--- Convert simple XML to JSON, ignoring attributes.
+-- Xml/Extra.elm
+-- Simplify creating Decoders for XML input.
 -- Copyright (c) 2017 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
@@ -9,16 +9,14 @@
 --
 ----------------------------------------------------------------------
 
-module Xml.SimpleXmlToJson exposing ( TagSpec, Required(..)
-                                    , decodeXml, stringToJson, xmlToJson
-                                    , tagDecoder, optionalTag
-                                    )
+module Xml.Extra exposing ( TagSpec, Required(..)
+                          , decodeXml, stringToJson, xmlToJson
+                          , tagDecoder, optionalTag
+                          )
 
 {-|
 
-Simplify the output of `Xml.xmlToJson`, removing attributes.
-
-Provide a decoder to ease turning that into an Elm record.
+Simplify creating Decoders for XML input.
 
 # Types
 @docs TagSpec, Required

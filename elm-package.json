@@ -1,13 +1,13 @@
 {
-    "version": "1.0.1",
-    "summary": "Simplify Xml.xmlToJson, eliminating attributes.",
-    "repository": "https://github.com/billstclair/elm-simple-xml-to-json.git",
+    "version": "1.0.0",
+    "summary": "Simplify building Decoders for XML input.",
+    "repository": "https://github.com/billstclair/elm-xml-extra.git",
     "license": "MIT",
     "source-directories": [
         "."
     ],
     "exposed-modules": [
-        "Xml.SimpleXmlToJson"
+        "Xml.Extra"
     ],
     "dependencies": {
         "eeue56/elm-xml": "2.2.2 <= v < 3.0.0",
