@@ -13,7 +13,7 @@ module Main exposing (..)
 
 import Xml.Extra exposing ( TagSpec, Required(..)
                           , xmlToJson, decodeXml
-                          , tagDecoder, optionalTag
+                          , tagDecoder, optionalTag, multipleTag
                           )
 
 import Xml
@@ -41,6 +41,7 @@ type alias Model =
     , isComplexXml : Bool
     , isComplexDecoder : Bool
     , tagSpecs : List TagSpec
+    , decoder : Decoder Person
     }
 
 type Msg
@@ -86,6 +87,7 @@ init =
       , isComplexXml = False
       , isComplexDecoder = False
       , tagSpecs = simplePersonTagSpecs
+      , decoder = simplePersonDecoder
       }
     , Cmd.none
     )
@@ -100,24 +102,41 @@ type alias PersonRecord =
 type Person =
     Person PersonRecord
 
+simplePersonDecoder : Decoder Person
+simplePersonDecoder =
+    JD.map2 (\name age ->
+                 Person <| PersonRecord name age Nothing []
+            )
+        (JD.field "name" JD.string)
+        (JD.field "age" JD.int)
+
 simplePersonTagSpecs : List TagSpec
 simplePersonTagSpecs =
     [ ("name", Required)
     , ("age", Required)
     ]
 
+-- Avoid the temptation to move the JD.lazy calls below into
+-- a top-level function.
+-- It tickles an Elm compiler bug.
 personDecoder : Decoder Person
 personDecoder =
-    JD.map3 (\x y z -> Person <| PersonRecord x y z [])
+    JD.map4 (\name age spouse children ->
+                 Person <| PersonRecord name age spouse children
+            )
         (JD.field "name" JD.string)
         (JD.field "age" JD.int)
-        (optionalTag "spouse" (JD.lazy (\_ -> personDecoder)) personTagSpecs)
+        (optionalTag "spouse"
+             (JD.lazy (\_ -> personDecoder)) personTagSpecs)
+        (multipleTag "child"
+             (JD.lazy (\_ -> personDecoder)) personTagSpecs)
 
 personTagSpecs : List TagSpec
 personTagSpecs =
     [ ("name", Required)
     , ("age", Required)
     , ("spouse", Optional)
+    , ("child", Multiple)
     ]
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -144,6 +163,10 @@ update msg model =
                                    personTagSpecs
                                else
                                    simplePersonTagSpecs
+                  , decoder = if isComplex then
+                                  personDecoder
+                              else
+                                  simplePersonDecoder
               }
             , Cmd.none
             )
@@ -170,7 +193,7 @@ view model =
                         Ok v -> JE.encode 1 <| xmlToJson v
                         Err msg -> msg
         -- This simple call will suffice for most of your XML parsing.
-        decodedSimpleValue = decodeXml xml "person" personDecoder model.tagSpecs
+        decodedSimpleValue = decodeXml xml "person" model.decoder model.tagSpecs
         decodedString = case decodedSimpleValue of
                             Err msg -> "Error:" ++ msg
                             Ok s -> toString s
@@ -191,12 +214,12 @@ view model =
                         []
                   , text " complex Decoder"
                   ]
-            , b [ text "XML:" ]
-            , pre []
-                [ text xml ]
             , b [ text "Decoded:" ]
             , pre []
                 [ text decodedString ]
+            , b [ text "XML:" ]
+            , pre []
+                [ text xml ]
             , b [ text "Xml.Extra.xmlToJson:" ]
             , pre []
                 [ text simpleVal ]

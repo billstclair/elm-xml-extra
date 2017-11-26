@@ -11,21 +11,91 @@
 
 module Xml.Extra exposing ( TagSpec, Required(..)
                           , decodeXml, stringToJson, xmlToJson
-                          , tagDecoder, optionalTag
+                          , tagDecoder, optionalTag, multipleTag
                           )
 
 {-|
 
 Simplify creating Decoders for XML input.
 
+Most code will only need the two types, the `decodeXml` function, and the `optionalTag` & `multipleTag` decoders.
+
+Example:
+
+    import XML.Extra exposing ( TagSpec, Required(..)
+                              , decodeXml, optionalTag
+                              )
+    import Json.Decode as JD exposing ( Decoder )
+
+    type alias PersonRecord =
+        { name : String
+        , age : Int
+        , spouse : Maybe Person
+        , children : List Person
+        }
+
+    type Person =
+        Person PersonRecord
+
+    personDecoder : Decoder Person
+    personDecoder =
+        JD.map4 (\name age spouse children ->
+                     Person <| PersonRecord name age spouse children
+            (JD.field "name" JD.string)
+            (JD.field "age" JD.int)
+            (optionalTag "spouse"
+                 (JD.lazy (\_ -> personDecoder))
+                 personTagSpecs
+            )
+            (multipleTag "child"
+                 (JD.lazy (\_ -> personDecoder))
+                 personTagSpecs)
+    
+    personTagSpecs : List TagSpec
+    personTagSpecs =
+        [ ("name", Required)
+        , ("age", Required)
+        , ("spouse", Optional)
+        , ("child", Multiple)
+        ]
+
+    decodePersonXml : String -> Result String Person
+    decodePersonXml xml =
+        decodeXml xml "person" personDecoder personTagSpecs
+
+    Xml =
+        """
+    <person>
+      <name>Irving</name>
+      <age max="100">30</age>
+      <sex>yes</sex>
+      <favoriteColor>blue</favoriteColor>
+      <spouse>
+          <name>Joan</name>
+          <age>28</age>
+      </spouse>
+      <child>
+          <name>Bob</name>
+          <age>1</age>
+      </child>
+      <child>
+          <name>Sally</name>
+          <age>3</age>
+      </child>
+    </person>
+        """
+
 # Types
 @docs TagSpec, Required
 
 # Decoders
-@docs tagDecoder, optionalTag
+@docs optionalTag, multipleTag
 
 # Functions
-@docs decodeXml, stringToJson, xmlToJson
+@docs decodeXml
+
+# Low-level decoder and functions
+@docs tagDecoder, stringToJson, xmlToJson
 
 -}
 
@@ -33,12 +103,12 @@ import Xml
 import Xml.Decode as XD
 import Json.Encode as JE exposing ( Value )
 import Json.Decode as JD exposing ( Decoder )
-import List.Extra as LE
+import Debug exposing ( log )
 
 {-| Decode an XML string containing a single tag into an Elm value.
 -}
 decodeXml : String -> String -> Decoder value -> List TagSpec -> Result String value
-decodeXml xml tag decoder tagSpecs =
+decodeXml xml tag valueDecoder tagSpecs =
     case stringToJson xml of
         Err msg ->
             Err msg
@@ -49,33 +119,43 @@ decodeXml xml tag decoder tagSpecs =
                     case list of
                         [a] ->
                             JD.decodeValue
-                                (JD.field tag <| tagDecoder decoder tagSpecs)
+                                (JD.field tag <| tagDecoder valueDecoder tagSpecs)
                                 a
                         _ ->
                             Err "Xml did not contain a single tag."
                 Err msg ->
                     Err msg                
 
+optionalTagCallback : Decoder value -> List TagSpec -> Maybe Value -> Decoder (Maybe value)
+optionalTagCallback valueDecoder tagSpecs value =
+    case value of
+        Nothing ->
+            JD.succeed Nothing
+        Just v ->
+            case JD.decodeValue
+                (tagDecoder valueDecoder tagSpecs)
+                v
+            of
+                Ok value ->
+                    JD.succeed <| Just value
+                Err msg ->
+                    JD.fail msg
+
 {-| A decoder for `Optional` XML tags
 -}
 optionalTag : String -> Decoder value -> List TagSpec -> Decoder (Maybe value)
-optionalTag tag decoder tagSpecs =
+optionalTag tag valueDecoder tagSpecs =
     JD.oneOf
         [ JD.field tag (JD.nullable JD.value)
         , JD.succeed Nothing
         ]
-        |> JD.andThen
-            (\v ->
-                 case v of
-                     Nothing ->
-                         JD.succeed Nothing
-                     Just v ->
-                         case JD.decodeValue (tagDecoder decoder tagSpecs) v of
-                             Ok value ->
-                                 JD.succeed <| Just value
-                             Err msg ->
-                                 JD.fail msg
-            )
+        |> JD.andThen (optionalTagCallback valueDecoder tagSpecs)
+
+{-| A decoder for `Multiple` XML tags
+-}
+multipleTag : String -> Decoder value -> List TagSpec -> Decoder (List value)
+multipleTag tag valueDecoder tagSpecs =
+    JD.field tag (JD.list <| tagDecoder valueDecoder tagSpecs)
 
 {-| Decode an XML string into a simplified `Json.Encode.Value`.
 -}
@@ -97,19 +177,21 @@ xmlToJson xml =
     in
         decodeXmlValue value
 
+removeLeadingNullValue : List Value -> Decoder Value
+removeLeadingNullValue list =
+    case list of
+        a :: rest ->
+            if a == JE.null then
+                JD.succeed (JE.list rest)
+            else
+                JD.succeed (JE.list list)
+        _ ->
+            JD.succeed <| JE.list list
+                            
 removeLeadingNullDecoder : Decoder Value
 removeLeadingNullDecoder =
     JD.list JD.value
-        |> JD.andThen (\list ->
-                           case list of
-                               a :: rest ->
-                                   if a == JE.null then
-                                       JD.succeed (JE.list rest)
-                                   else
-                                       JD.succeed (JE.list list)
-                               _ ->
-                                   JD.succeed <| JE.list list
-                            )
+        |> JD.andThen removeLeadingNullValue
 
 removeLeadingNull : Value -> Value
 removeLeadingNull value =
@@ -147,12 +229,12 @@ xmlValueDecoder =
         , JD.value
         ]
 
-{-| For `tagDecoder`. How to handle a tag.
+{-| How to handle a tag in a `TagSpec`.
 
-Required tags error if not there.
-RequiredIgnore tags must be in the XML, but are not returned.
-Optional tags will become null if not in the XML.
-Multiple tags become a list.
+`Required` tags error if not there.
+`RequiredIgnore` tags must be in the XML, but are not returned.
+`Optional` tags will become null if not in the XML.
+`Multiple` tags become a list.
 -}
 type Required
     = Required
@@ -165,6 +247,14 @@ type Required
 type alias TagSpec =
     (String, Required)
 
+tagDecoderCallback : Decoder value -> Value -> Decoder value
+tagDecoderCallback valueDecoder value =
+    case JD.decodeValue valueDecoder value of
+        Ok val ->
+            JD.succeed val
+        Err msg ->
+            JD.fail msg
+
 {-| Decode the contents of an XML tag with subtags.
 
 Each TagSpec pulls one or more matching tags from the list.
@@ -175,20 +265,14 @@ You end up with a single JSON object, with the tags as keys,
 to which you can apply a standard JSON decoder.
 -}
 tagDecoder : Decoder value -> List TagSpec -> Decoder value
-tagDecoder decoder tagSpecs =
+tagDecoder valueDecoder tagSpecs =
     tagValueDecoder tagSpecs
-        |> JD.andThen
-           (\value ->
-                case JD.decodeValue decoder value of
-                    Ok value ->
-                        JD.succeed value
-                    Err msg ->
-                        JD.fail msg
-           )
+        |> JD.andThen (tagDecoderCallback valueDecoder)
 
 tagValueDecoder : List TagSpec -> Decoder Value
 tagValueDecoder tagSpecs =
-    JD.list JD.value |> JD.andThen (doTagDecode tagSpecs)
+    JD.list JD.value
+        |> JD.andThen (doTagDecode tagSpecs)
 
 oneTagDecoder : String -> Decoder Value
 oneTagDecoder tag =
@@ -197,27 +281,27 @@ oneTagDecoder tag =
 doTagDecode : List TagSpec -> List Value -> Decoder Value
 doTagDecode tagSpecs values =
     let loop : List TagSpec -> List Value -> List (String, Value) -> Decoder Value
-        loop = (\dcdrs vals res ->
-                    case dcdrs of
+        loop = (\specs vals res ->
+                    case specs of
                         [] ->
                             JD.succeed <| JE.object res
-                        (tag, req) :: dcdrsTail ->
+                        (tag, req) :: specsTail ->
                             case req of
                                 Multiple ->
                                     case decodeMultiple tag vals of
                                         Ok (valsTail, value) ->
-                                            loop dcdrsTail valsTail
+                                            loop specsTail valsTail
                                                 <| (tag, value) :: res
                                         Err msg ->
                                             JD.fail msg
                                 _ ->
                                     case vals of
                                         [] ->
-                                            hangingVals dcdrs res
+                                            hangingVals specs res
                                         val :: valsTail ->
                                             case decodeOne tag req val valsTail of
                                                 Ok (vtail, oneRes) ->
-                                                    loop dcdrsTail vtail
+                                                    loop specsTail vtail
                                                         <| case req of
                                                                RequiredIgnore ->
                                                                    res
@@ -235,38 +319,38 @@ doTagDecode tagSpecs values =
 -- Optional or Multiple, and append nulls or empty lists.
 -- If any Required specs are left, error.
 hangingVals : List TagSpec -> List (String, Value) -> Decoder Value
-hangingVals dcdrs res =
-    let hloop = (\dt r ->
-                     case dt of
-                         [] ->
-                             JD.succeed <| JE.object r
-                         (tag, req) :: dtt ->
-                             case req of
-                                 Optional ->
-                                     hloop dtt <| (tag, JE.null) :: r
-                                 Multiple ->
-                                     hloop dtt <| (tag, JE.list []) :: r
-                                 _ ->
-                                     JD.fail <| "Tag not found: " ++ tag
-                )
+hangingVals specs res =
+    let loop = (\specsTail r ->
+                    case specsTail of
+                        [] ->
+                            JD.succeed <| JE.object r
+                        (tag, req) :: specsTailTail ->
+                            case req of
+                                Optional ->
+                                    loop specsTailTail <| (tag, JE.null) :: r
+                                Multiple ->
+                                    loop specsTailTail <| (tag, JE.list []) :: r
+                                _ ->
+                                    JD.fail <| "Tag not found: " ++ tag
+               )
     in
-        hloop dcdrs res
+        loop specs res
 
 -- Decode a single tag from the list.
 -- Skip elements with other tags until you find one with the passed `tag`.
 -- The `Required` arg is guaranteed NOT to be `Multiple`.
 decodeOne : String -> Required -> Value -> List Value -> Result String (List Value, Value)
 decodeOne tag req val valsTail =
-    let decoder = oneTagDecoder tag
-        d1loop =
+    let oneDecoder = oneTagDecoder tag
+        loop =
             (\v vt ->
-                 case JD.decodeValue decoder v of
+                 case JD.decodeValue oneDecoder v of
                      Ok v ->
                          case req of
                              RequiredIgnore ->
-                                 Ok (valsTail, JE.null)
+                                 Ok (vt, JE.null)
                              _ ->
-                                 Ok (valsTail, v)
+                                 Ok (vt, v)
                      Err msg ->
                          case vt of
                              [] ->
@@ -276,11 +360,33 @@ decodeOne tag req val valsTail =
                                      _ ->
                                          Err <| "Required tag not found: " ++ tag
                              vv :: vvt ->
-                                 d1loop vv vvt
+                                 loop vv vvt
             )
     in
-        d1loop val valsTail
+        loop val valsTail
 
 decodeMultiple : String -> List Value -> Result String (List Value, Value)
 decodeMultiple tag vals =
-    Err "decodeMultiple not yet implemented."
+    let oneDecoder = oneTagDecoder tag
+        loop = (\valsTail res ->
+                    case valsTail of
+                        [] ->
+                            if res == [] then
+                                Ok (vals, JE.list [])
+                            else
+                                Ok ([], JE.list <| List.reverse res
+                               )
+                        val :: tail ->
+                            case JD.decodeValue oneDecoder val of
+                                Ok v ->
+                                    loop tail <| v :: res
+                                Err msg ->
+                                    if res == [] then
+                                        loop tail []
+                                    else
+                                        Ok ( valsTail
+                                           , JE.list <| List.reverse res
+                                           )
+               )
+    in
+        loop vals []
