@@ -28,6 +28,8 @@ import Html exposing ( Html, Attribute
 import Html.Attributes exposing ( type_, checked, style )
 import Html.Events exposing ( onCheck )
 
+import String.Extra as SE
+
 main =
     Html.program
         { init = init
@@ -195,7 +197,7 @@ view model =
         -- This simple call will suffice for most of your XML parsing.
         decodedSimpleValue = decodeXml xml "person" model.decoder model.tagSpecs
         decodedString = case decodedSimpleValue of
-                            Err msg -> "Error:" ++ msg
+                            Err err -> "Error:" ++ (toString err)
                             Ok s -> toString s
     in
         div [ style [("margin-left", "2em")] ]
@@ -216,7 +218,7 @@ view model =
                   ]
             , b [ text "Decoded:" ]
             , pre []
-                [ text decodedString ]
+                [ text <| SE.softWrapWith 80 "\n  " decodedString ]
             , b [ text "XML:" ]
             , pre []
                 [ text xml ]
@@ -228,5 +230,5 @@ view model =
                 [ text val ]
             , b [ text "Parsed XML:" ]
             , pre []
-                [ text xs ]
+                [ text <| SE.softWrapWith 80 "\n  " xs ]
             ]

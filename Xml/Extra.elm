@@ -9,7 +9,7 @@
 --
 ----------------------------------------------------------------------
 
-module Xml.Extra exposing ( TagSpec, Required(..)
+module Xml.Extra exposing ( TagSpec, Required(..), Error(..), DecodeDetails
                           , decodeXml, stringToJson, xmlToJson
                           , tagDecoder, optionalTag, multipleTag
                           )
@@ -94,6 +94,9 @@ Example:
 # Functions
 @docs decodeXml
 
+# Errors
+@docs Error, DecodeDetails
+
 # Low-level decoder and functions
 @docs tagDecoder, stringToJson, xmlToJson
 
@@ -105,26 +108,59 @@ import Json.Encode as JE exposing ( Value )
 import Json.Decode as JD exposing ( Decoder )
 import Debug exposing ( log )
 
+{-| Details about a decode error.
+
+`value` is the input to the decoder.
+`msg` is the error from Json.Decode.decodeValue with the current value appended.
+-}
+type alias DecodeDetails =
+    { value : JD.Value
+    , msg : String
+    }
+
+{-| The error return from decodeXml
+-}
+type Error
+    = XmlError String
+    | DecodeError DecodeDetails
+
 {-| Decode an XML string containing a single tag into an Elm value.
 -}
-decodeXml : String -> String -> Decoder value -> List TagSpec -> Result String value
+decodeXml : String -> String -> Decoder value -> List TagSpec -> Result Error value
 decodeXml xml tag valueDecoder tagSpecs =
     case stringToJson xml of
         Err msg ->
-            Err msg
+            Err <| XmlError msg
         Ok value ->
             case JD.decodeValue (JD.list JD.value) value
             of
                 Ok list ->
                     case list of
                         [a] ->
-                            JD.decodeValue
-                                (JD.field tag <| tagDecoder valueDecoder tagSpecs)
-                                a
+                            case JD.decodeValue
+                                    (JD.field tag
+                                         <| tagDecoder valueDecoder tagSpecs)
+                                    a
+                            of
+                                Ok value ->
+                                    Ok value
+                                Err msg ->
+                                    Err
+                                    <| DecodeError
+                                        { value = value
+                                        , msg = msg
+                                        }
                         _ ->
-                            Err "Xml did not contain a single tag."
+                            Err
+                            <| DecodeError
+                                { value = value
+                                , msg = "Xml did not contain a single top-level tag."
+                                }
                 Err msg ->
-                    Err msg                
+                    Err
+                    <| DecodeError
+                        { value = value
+                        , msg = msg }
 
 optionalTagCallback : Decoder value -> List TagSpec -> Maybe Value -> Decoder (Maybe value)
 optionalTagCallback valueDecoder tagSpecs value =
@@ -278,6 +314,13 @@ oneTagDecoder : String -> Decoder Value
 oneTagDecoder tag =
     JD.field tag JD.value
 
+notateError : String -> List TagSpec -> List Value -> Decoder Value
+notateError msg tagSpecs values =
+    JD.fail
+        <| msg ++
+            "\ntagSpecs: " ++ (toString tagSpecs) ++
+            "\nvalues: " ++ (toString values)
+
 doTagDecode : List TagSpec -> List Value -> Decoder Value
 doTagDecode tagSpecs values =
     let loop : List TagSpec -> List Value -> List (String, Value) -> Decoder Value
@@ -293,7 +336,7 @@ doTagDecode tagSpecs values =
                                             loop specsTail valsTail
                                                 <| (tag, value) :: res
                                         Err msg ->
-                                            JD.fail msg
+                                            notateError msg specs vals
                                 _ ->
                                     case vals of
                                         [] ->
@@ -308,7 +351,7 @@ doTagDecode tagSpecs values =
                                                                _ ->
                                                                    (tag, oneRes) :: res
                                                 Err msg ->
-                                                    JD.fail msg
+                                                    notateError msg specs vals
                )
 
     in
