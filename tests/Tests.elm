@@ -8,7 +8,7 @@ import Maybe exposing ( withDefault )
 
 import Xml.Extra exposing ( TagSpec, Required(..), Error(..), DecodeDetails
                           , xmlToJson, decodeXml
-                          , tagDecoder, optionalTag, multipleTag
+                          , tagDecoder, requiredTag, optionalTag, multipleTag
                           )
 
 import Json.Decode as JD exposing ( Decoder )
@@ -56,13 +56,18 @@ expectResult sb was =
                 Ok sbv ->
                     Expect.equal sbv wasv
 
+type alias Friend =
+    { name : String
+    , nickname : String
+    }
+
 type alias PersonRecord =
     { name : String
     , age : Int
     , spouse : Maybe Person
     , children : List Person
     , favoriteColor : Maybe String
-    , friends : List String
+    , bestFriend : Friend
     }
 
 type Person =
@@ -73,9 +78,9 @@ type Person =
 -- It tickles an Elm compiler bug.
 personDecoder : Decoder Person
 personDecoder =
-    JD.map6 (\name age spouse children color friends ->
+    JD.map6 (\name age spouse children color friend ->
                  Person
-                 <| PersonRecord name age spouse children color friends
+                 <| PersonRecord name age spouse children color friend
             )
         (JD.field "name" JD.string)
         (JD.field "age" JD.int)
@@ -84,7 +89,7 @@ personDecoder =
         (multipleTag "child"
              (JD.lazy (\_ -> personDecoder)) personTagSpecs)
         (optionalTag "favoriteColor" JD.string [])
-        (multipleTag "friend" JD.string [])
+        (requiredTag "bestFriend" friendDecoder friendTagSpecs)
 
 personTagSpecs : List TagSpec
 personTagSpecs =
@@ -93,7 +98,19 @@ personTagSpecs =
     , ("spouse", Optional)
     , ("child", Multiple)
     , ("favoriteColor", Optional)
-    , ("friend", Multiple)
+    , ("bestFriend", Required)
+    ]
+
+friendDecoder : Decoder Friend
+friendDecoder =
+    JD.map2 Friend
+        (JD.field "name" JD.string)
+        (JD.field "nickname" JD.string)
+
+friendTagSpecs : List TagSpec
+friendTagSpecs =
+    [ ("name", Required)
+    , ("nickname", Required)
     ]
 
 personTest : (String, Result Error Person) -> String -> Test
@@ -114,38 +131,56 @@ decodeError =
                 , msg = "message"
                 }
 
+noFriend : Friend
+noFriend =
+    Friend "nobody" "nothing"
+
 simplePerson : String -> Int -> Person
 simplePerson name age =
-    Person <| PersonRecord name age Nothing [] Nothing []
+    Person <| PersonRecord name age Nothing [] Nothing noFriend
 
 person : String -> Int -> Maybe Person -> List Person -> Person
 person name age spouse children =
-    Person <| PersonRecord name age spouse children Nothing []
+    Person <| PersonRecord name age spouse children Nothing noFriend
 
-fullPerson : String -> Int -> Maybe Person -> List Person -> Maybe String -> List String -> Person
-fullPerson name age spouse children color friends =
-    Person <| PersonRecord name age spouse children color friends
+fullPerson : String -> Int -> Maybe Person -> List Person -> Maybe String -> Friend -> Person
+fullPerson name age spouse children color friend =
+    Person <| PersonRecord name age spouse children color friend
+
+noFriendXml : String
+noFriendXml =
+    """
+     <bestFriend>
+       <name>nobody</name>
+       <nickname>nothing</nickname>
+     </bestFriend>
+    """
+
+simpleXml : String -> String
+simpleXml body =
+    "<person>" ++ body ++ noFriendXml ++ "</person>"
 
 personData : List (String, Result Error Person)
 personData =
-    [ ( "<person><name>Irving</name><age>30</age></person>"
+    [ ( simpleXml "<name>Irving</name><age>30</age>"
       , Ok <| simplePerson "Irving" 30
       )
-    , ( "<person><name>Irving</name><ignore>foo</ignore><age>30</age></person>"
+    , ( simpleXml "<name>Irving</name><ignore>foo</ignore><age>30</age>"
       , Ok <| simplePerson "Irving" 30
       )
-    , ( "<person><name>John</name></person>"
+    , ( simpleXml "<name>John</name>"
       , Err decodeError
       )
-    , ( """
-         <person>
-           <name>John</name>
-           <age>30</age>
-           <spouse>
-             <name>Joan</name>
-             <age>28</age>
-           </spouse>
-         </person>
+    , ( simpleXml <|
+        """
+         <name>John</name>
+         <age>30</age>
+         <spouse>
+           <name>Joan</name>
+           <age>28</age>
+        """ ++ noFriendXml ++
+        """
+         </spouse>
         """
        , Ok
            <| person "John"
@@ -153,16 +188,17 @@ personData =
                (Just <| simplePerson "Joan" 28)
                []
       )
-    , ( """
-         <person>
-           <name>John</name>
-           <age>30</age>
-           <spouse>
-             <name>Joan</name>
-             <age>28</age>
-           </spouse>
-           <favoriteColor>blue</favoriteColor>
-         </person>
+    , ( simpleXml <|
+        """
+         <name>John</name>
+         <age>30</age>
+         <spouse>
+           <name>Joan</name>
+           <age>28</age>
+        """ ++ noFriendXml ++
+        """
+         </spouse>
+         <favoriteColor>blue</favoriteColor>
         """
        , Ok
            <| fullPerson "John"
@@ -170,14 +206,13 @@ personData =
                (Just <| simplePerson "Joan" 28)
                []
                (Just "blue")
-               []
+               noFriend
       )
-    , ( """
-         <person>
+    , ( simpleXml
+        """
            <name>John</name>
            <age>30</age>
            <favoriteColor>green</favoriteColor>
-         </person>
         """
       , Ok
           <| fullPerson "John"
@@ -185,7 +220,7 @@ personData =
               Nothing
               []
               (Just "green")
-              []
+              noFriend
       )
     , ( """
          <person>
@@ -194,10 +229,13 @@ personData =
            <child>
              <name>Joe</name>
              <age>3</age>
+        """ ++ noFriendXml ++
+        """
            </child>
-           <friend>Mel</friend>
-           <friend>Bud</friend>
-           <friend>Sam</friend>
+           <bestFriend>
+             <name>Mel</name>
+             <nickname>Johnny</nickname>
+           </bestFriend>
          </person>
         """
       , Ok
@@ -206,6 +244,6 @@ personData =
               Nothing
               [ simplePerson "Joe" 3 ]
               Nothing
-              [ "Mel", "Bud", "Sam" ]
+              (Friend "Mel" "Johnny")
       )
     ]

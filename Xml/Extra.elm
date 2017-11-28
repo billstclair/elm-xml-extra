@@ -11,7 +11,7 @@
 
 module Xml.Extra exposing ( TagSpec, Required(..), Error(..), DecodeDetails
                           , decodeXml, stringToJson, xmlToJson
-                          , tagDecoder, optionalTag, multipleTag
+                          , tagDecoder, requiredTag, optionalTag, multipleTag
                           )
 
 {-|
@@ -89,7 +89,7 @@ Example:
 @docs TagSpec, Required
 
 # Decoders
-@docs optionalTag, multipleTag
+@docs requiredTag, optionalTag, multipleTag
 
 # Functions
 @docs decodeXml
@@ -171,7 +171,7 @@ optionalTagCallback valueDecoder tagSpecs value =
             let decoder = if tagSpecs == [] then
                               valueDecoder
                           else
-                              (tagDecoder valueDecoder tagSpecs)
+                              tagDecoder valueDecoder tagSpecs
             in
                 case JD.decodeValue decoder v
                 of
@@ -191,6 +191,19 @@ optionalTag tag valueDecoder tagSpecs =
         , JD.succeed Nothing
         ]
         |> JD.andThen (optionalTagCallback valueDecoder tagSpecs)
+
+{-| A decoder for `Required` XML tags
+
+If the `TagSpec` list is empty, then the `Decoder` is for a simple value. Otherwise, it's for a nested tag.
+-}
+requiredTag : String -> Decoder value -> List TagSpec -> Decoder value
+requiredTag tag valueDecoder tagSpecs =
+    let decoder = if tagSpecs == [] then
+                      valueDecoder
+                  else
+                      tagDecoder valueDecoder tagSpecs
+    in
+        JD.field tag decoder
 
 {-| A decoder for `Multiple` XML tags
 
