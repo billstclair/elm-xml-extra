@@ -343,8 +343,8 @@ doTagDecode tagSpecs values =
                                             hangingVals specs res
                                         val :: valsTail ->
                                             case decodeOne tag req val valsTail of
-                                                Ok (vtail, oneRes) ->
-                                                    loop specsTail vtail
+                                                Ok (vtail, oneRes, found) ->
+                                                    loop specsTail (if found then vtail else vals)
                                                         <| case req of
                                                                RequiredIgnore ->
                                                                    res
@@ -353,7 +353,6 @@ doTagDecode tagSpecs values =
                                                 Err msg ->
                                                     notateError msg specs vals
                )
-
     in
         loop tagSpecs values []
                                     
@@ -382,24 +381,20 @@ hangingVals specs res =
 -- Decode a single tag from the list.
 -- Skip elements with other tags until you find one with the passed `tag`.
 -- The `Required` arg is guaranteed NOT to be `Multiple`.
-decodeOne : String -> Required -> Value -> List Value -> Result String (List Value, Value)
+decodeOne : String -> Required -> Value -> List Value -> Result String (List Value, Value, Bool)
 decodeOne tag req val valsTail =
     let oneDecoder = oneTagDecoder tag
         loop =
             (\v vt ->
                  case JD.decodeValue oneDecoder v of
                      Ok v ->
-                         case req of
-                             RequiredIgnore ->
-                                 Ok (vt, JE.null)
-                             _ ->
-                                 Ok (vt, v)
+                         Ok (vt, v, True)
                      Err msg ->
                          case vt of
                              [] ->
                                  case req of
                                      Optional ->
-                                         Ok (valsTail, JE.null)
+                                         Ok (valsTail, JE.null, False)
                                      _ ->
                                          Err <| "Required tag not found: " ++ tag
                              vv :: vvt ->

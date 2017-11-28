@@ -174,6 +174,20 @@ personData =
          <person>
            <name>John</name>
            <age>30</age>
+           <favoriteColor>green</favoriteColor>
+         </person>
+        """
+      , Ok
+          <| fullPerson "John"
+              30
+              Nothing
+              []
+              (Just "green")
+      )
+    , ( """
+         <person>
+           <name>John</name>
+           <age>30</age>
            <child>
              <name>Joe</name>
              <age>3</age>
