@@ -40,3 +40,5 @@ There's a more complicated example at the top of the documentation for the `Xml.
 If your XML has more than one top-level tag, you can use the other exported functions, which the code for `decodeXml` should help you understand, to handle it.
 
 There's an example in the [`example`](https://github.com/billstclair/elm-xml-extra/tree/master/example) directory.
+
+There are `elm-test` tests in the [`tests`](https://github.com/billstclair/elm-xml-extra/tree/master/tests) directory.
