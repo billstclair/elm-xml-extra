@@ -18,7 +18,7 @@ log = Debug.log
 
 enableLogging : Bool
 enableLogging =
-  False                         --change to True to log JSON input & output results
+  False --change to True to log JSON input & output results
 
 maybeLog : String -> a -> a
 maybeLog label value =
@@ -62,6 +62,7 @@ type alias PersonRecord =
     , spouse : Maybe Person
     , children : List Person
     , favoriteColor : Maybe String
+    , friends : List String
     }
 
 type Person =
@@ -72,8 +73,9 @@ type Person =
 -- It tickles an Elm compiler bug.
 personDecoder : Decoder Person
 personDecoder =
-    JD.map5 (\name age spouse children color ->
-                 Person <| PersonRecord name age spouse children color
+    JD.map6 (\name age spouse children color friends ->
+                 Person
+                 <| PersonRecord name age spouse children color friends
             )
         (JD.field "name" JD.string)
         (JD.field "age" JD.int)
@@ -81,10 +83,8 @@ personDecoder =
              (JD.lazy (\_ -> personDecoder)) personTagSpecs)
         (multipleTag "child"
              (JD.lazy (\_ -> personDecoder)) personTagSpecs)
-        (JD.oneOf [ JD.field "favoriteColor" (JD.nullable JD.string)
-                  , JD.succeed Nothing
-                  ]
-        )
+        (optionalTag "favoriteColor" JD.string [])
+        (multipleTag "friend" JD.string [])
 
 personTagSpecs : List TagSpec
 personTagSpecs =
@@ -93,6 +93,7 @@ personTagSpecs =
     , ("spouse", Optional)
     , ("child", Multiple)
     , ("favoriteColor", Optional)
+    , ("friend", Multiple)
     ]
 
 personTest : (String, Result Error Person) -> String -> Test
@@ -115,15 +116,15 @@ decodeError =
 
 simplePerson : String -> Int -> Person
 simplePerson name age =
-    Person <| PersonRecord name age Nothing [] Nothing
+    Person <| PersonRecord name age Nothing [] Nothing []
 
 person : String -> Int -> Maybe Person -> List Person -> Person
 person name age spouse children =
-    Person <| PersonRecord name age spouse children Nothing
+    Person <| PersonRecord name age spouse children Nothing []
 
-fullPerson : String -> Int -> Maybe Person -> List Person -> Maybe String -> Person
-fullPerson name age spouse children color =
-    Person <| PersonRecord name age spouse children color
+fullPerson : String -> Int -> Maybe Person -> List Person -> Maybe String -> List String -> Person
+fullPerson name age spouse children color friends =
+    Person <| PersonRecord name age spouse children color friends
 
 personData : List (String, Result Error Person)
 personData =
@@ -169,6 +170,7 @@ personData =
                (Just <| simplePerson "Joan" 28)
                []
                (Just "blue")
+               []
       )
     , ( """
          <person>
@@ -183,6 +185,7 @@ personData =
               Nothing
               []
               (Just "green")
+              []
       )
     , ( """
          <person>
@@ -192,12 +195,17 @@ personData =
              <name>Joe</name>
              <age>3</age>
            </child>
+           <friend>Mel</friend>
+           <friend>Bud</friend>
+           <friend>Sam</friend>
          </person>
         """
       , Ok
-          <| person "John"
+          <| fullPerson "John"
               30
               Nothing
               [ simplePerson "Joe" 3 ]
+              Nothing
+              [ "Mel", "Bud", "Sam" ]
       )
     ]

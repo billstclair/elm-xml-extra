@@ -168,16 +168,21 @@ optionalTagCallback valueDecoder tagSpecs value =
         Nothing ->
             JD.succeed Nothing
         Just v ->
-            case JD.decodeValue
-                (tagDecoder valueDecoder tagSpecs)
-                v
-            of
-                Ok value ->
-                    JD.succeed <| Just value
-                Err msg ->
-                    JD.fail msg
+            let decoder = if tagSpecs == [] then
+                              valueDecoder
+                          else
+                              (tagDecoder valueDecoder tagSpecs)
+            in
+                case JD.decodeValue decoder v
+                of
+                    Ok value ->
+                        JD.succeed <| Just value
+                    Err msg ->
+                        JD.fail msg
 
 {-| A decoder for `Optional` XML tags
+
+If the `TagSpec` list is empty, then the `Decoder` is for a simple value. Otherwise, it's for a nested tag.
 -}
 optionalTag : String -> Decoder value -> List TagSpec -> Decoder (Maybe value)
 optionalTag tag valueDecoder tagSpecs =
@@ -188,10 +193,17 @@ optionalTag tag valueDecoder tagSpecs =
         |> JD.andThen (optionalTagCallback valueDecoder tagSpecs)
 
 {-| A decoder for `Multiple` XML tags
+
+If the `TagSpec` list is empty, then the `Decoder` is for a simple value. Otherwise, it's for a nested tag.
 -}
 multipleTag : String -> Decoder value -> List TagSpec -> Decoder (List value)
 multipleTag tag valueDecoder tagSpecs =
-    JD.field tag (JD.list <| tagDecoder valueDecoder tagSpecs)
+    let decoder = if tagSpecs == [] then
+                      valueDecoder
+                  else
+                      tagDecoder valueDecoder tagSpecs
+    in
+        JD.field tag <| JD.list decoder
 
 {-| Decode an XML string into a simplified `Json.Encode.Value`.
 -}
