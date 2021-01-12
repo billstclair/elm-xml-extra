@@ -1,4 +1,4 @@
-The [billstclair/elm-xml-extra](http://package.elm-lang.org/packages/billstclair/elm-xml-extra/latest) package is an extension of the [eeue56/elm-xml](http://package.elm-lang.org/packages/eeue56/elm-xml/latest) package that simplifies creating Decoders for XML it parses.
+The [billstclair/elm-xml-extra](http://package.elm-lang.org/packages/billstclair/elm-xml-extra/latest) package is an extension of the [billstclair/elm-xml-eeue56](http://package.elm-lang.org/packages/billstclair/elm-xml-eeue56/latest) package that simplifies creating Decoders for XML it parses.
 
 [![Build Status](https://travis-ci.org/billstclair/elm-xml-extra.svg?branch=master)](https://travis-ci.org/billstclair/elm-xml-extra)
 
