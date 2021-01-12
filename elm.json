@@ -3,7 +3,7 @@
     "name": "billstclair/elm-xml-extra",
     "summary": "Extend eeue56/elm-xml to simplify building Decoders for XML input.",
     "license": "MIT",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "exposed-modules": [
         "Xml.Extra"
     ],
