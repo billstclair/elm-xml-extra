@@ -1,4 +1,4 @@
-----------------------------------------------------------------------
+---------------------------------------------------------------------
 --
 -- Xml/Extra.elm
 -- Simplify creating Decoders for XML input.
@@ -281,7 +281,7 @@ xmlToJson : Xml.Value -> Value
 xmlToJson xml =
     let
         value =
-            Xml.xmlToJson xml
+            Xml.xmlToJson2 xml
     in
     decodeXmlValue value
 
@@ -337,13 +337,13 @@ listToNull list =
 
 
 
--- Simplify the parsed XML by replacing the objects containing a "value"
+-- Simplify the parsed XML by replacing the objects containing a "#value"
 
 
 xmlValueDecoder : Decoder Value
 xmlValueDecoder =
     JD.oneOf
-        [ JD.map decodeXmlValue <| JD.field "value" JD.value
+        [ JD.map decodeXmlValue <| JD.field "#value" JD.value
         , JD.list JD.value |> JD.andThen listToNull
         , JD.map (JE.list identity) (JD.list <| JD.lazy (\_ -> xmlValueDecoder))
         , JD.map JE.object <|
