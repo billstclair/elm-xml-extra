@@ -18,7 +18,6 @@ import Xml.Extra
         , optionalTag
         , requiredTag
         , tagDecoder
-        , xmlToJson
         )
 
 

@@ -15,7 +15,7 @@ module Xml.Extra exposing
     , requiredTag, optionalTag, multipleTag
     , decodeXml
     , Error(..), DecodeDetails
-    , tagDecoder, stringToJson, xmlToJson
+    , tagDecoder, stringToJson, xmlToJson2
     )
 
 {-| Simplify creating Decoders for XML input.
@@ -110,7 +110,7 @@ Example:
 
 # Low-level decoder and functions
 
-@docs tagDecoder, stringToJson, xmlToJson
+@docs tagDecoder, stringToJson, xmlToJson2
 
 -}
 
@@ -268,7 +268,7 @@ stringToJson : String -> Result String Value
 stringToJson string =
     case XD.decode string of
         Ok val ->
-            Ok <| xmlToJson val
+            Ok <| xmlToJson2 val
 
         Err msg ->
             Err msg
@@ -277,8 +277,8 @@ stringToJson string =
 {-| Convert the `Xml.Value` returned by `Xml.Decode.decode` to a `Json.Encode.Value`,
 removing all the attributes.
 -}
-xmlToJson : Xml.Value -> Value
-xmlToJson xml =
+xmlToJson2 : Xml.Value -> Value
+xmlToJson2 xml =
     let
         value =
             Xml.xmlToJson2 xml
